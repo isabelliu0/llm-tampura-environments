@@ -135,4 +135,10 @@ if __name__ == "__main__":
     policy = tconfig.get_planner(config["planner"])(
         config, env.problem_spec, execution_data=execution_data
     )
+
+    start_time = time.process_time()
     (_, _) = policy.rollout(env, b0, store)
+    end_time = time.process_time()
+
+    total_time = end_time - start_time
+    print(f"Total execution time: {total_time:.2f} seconds")
