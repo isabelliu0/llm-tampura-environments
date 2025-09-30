@@ -171,7 +171,9 @@ sas_plan*
 *.gif
 output.sas
 *.out
+training_data/
 
 captures
 scripts/mdp_experiments_folder
 .vscode/
+.llm_cache.db
