@@ -176,3 +176,4 @@ training_data/
 captures
 scripts/mdp_experiments_folder
 .vscode/
+.llm_cache.db

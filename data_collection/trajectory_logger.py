@@ -97,8 +97,9 @@ class TrajectoryLogger:
         obs_dict = self._observation_to_dict(observation) if observation else {}
         action_dict = None
         if action is not None:
+            action_name = action.detailed_name if action.detailed_name else action.name
             action_dict = {
-                "name": action.name,
+                "name": action_name,
                 "args": list(action.args) if action.args else [],
             }
         next_ab_strings = []

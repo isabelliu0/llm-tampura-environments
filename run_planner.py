@@ -106,6 +106,21 @@ def create_parser():
         help="Directory to save collected training data",
         default="./training_data",
     )
+    parser.add_argument(
+        "--use-llm",
+        help="Use LLM-based planner instead of symK",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--training-data-dir",
+        help="Directory with collected training data for LLM",
+        default="./training_data",
+    )
+    parser.add_argument(
+        "--llm-model",
+        help="OpenAI model name for LLM planner",
+        default="gpt-4o-mini",
+    )
     return parser
 
 
@@ -153,6 +168,53 @@ if __name__ == "__main__":
     policy = tconfig.get_planner(config["planner"])(
         config, env.problem_spec, execution_data=execution_data
     )
+
+    if config.get("use_llm", False):
+        from tampura.solvers.llm.llm_plan_generator import LLMPlanGenerator
+        from tampura.solvers.llm.training_data_formatter import format_trajectory_for_llm
+
+        training_data_dir = config.get("training_data_dir", "./training_data")
+        training_examples = format_trajectory_for_llm(training_data_dir, max_trajectories=5)
+
+        llm_model = config.get("llm_model", "gpt-4o-mini")
+        num_plans = config.get("num_skeletons", 10)
+
+        llm_generator = LLMPlanGenerator(
+            training_examples=training_examples,
+            model_name=llm_model,
+            num_plans=num_plans,
+            save_dir=config["save_dir"],
+        )
+
+        initial_save_dir = os.path.join(config["save_dir"], "pddl_init")
+        os.makedirs(initial_save_dir, exist_ok=True)
+
+        initial_ab = b0.abstract(store)
+        (domain_file, problem_file) = env.problem_spec.save_pddl(
+            initial_ab, default_cost=100, folder=initial_save_dir, store=store
+        )
+        with open(domain_file, "r") as f:
+            domain_content = f.read()
+        with open(problem_file, "r") as f:
+            problem_content = f.read()
+
+        ab_strings = []
+        for atom in initial_ab.items:
+            if hasattr(atom, 'pred_name'):
+                if atom.args:
+                    ab_strings.append(f"({atom.pred_name} {' '.join(map(str, atom.args))})")
+                else:
+                    ab_strings.append(f"({atom.pred_name})")
+
+        logging.info("[LLM] Synthesizing plan generator function...")
+        success = llm_generator.synthesize_plan_generator(
+            domain_content, problem_content, ab_strings
+        )
+        if success:
+            policy.llm_generator = llm_generator
+            config["use_llm_planner"] = True
+        else:
+            config["use_llm_planner"] = False
 
     if trajectory_logger is not None:
         policy.trajectory_logger = trajectory_logger
