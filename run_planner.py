@@ -12,6 +12,7 @@ import tampura
 from tampura.config import config as tconfig
 
 import tampura_environments
+from data_collection.trajectory_logger import create_logger_from_config
 
 
 def create_parser():
@@ -95,6 +96,16 @@ def create_parser():
         "--load",
         help="Location of the save folder to load from when visualizing",
     )
+    parser.add_argument(
+        "--collect-data",
+        help="Enable data collection for LLM training",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--data-save-dir",
+        help="Directory to save collected training data",
+        default="./training_data",
+    )
     return parser
 
 
@@ -127,6 +138,13 @@ if __name__ == "__main__":
 
     tconfig.setup_logger(config["save_dir"], log_level=logging.INFO)
 
+    # Initialize trajectory logger if data collection is enabled
+    trajectory_logger = None
+    if config.get("collect_data", False):
+        task_name = f"{config['task']}_seed{config['global_seed']}"
+        trajectory_logger = create_logger_from_config(config, task_name)
+        logging.info(f"[DataCollection] Enabled for task: {task_name}")
+
     env = tconfig.get_env(config["task"])(config=config)
     b0, store = env.initialize()
     if execution_data is not None:
@@ -136,9 +154,23 @@ if __name__ == "__main__":
         config, env.problem_spec, execution_data=execution_data
     )
 
+    if trajectory_logger is not None:
+        policy.trajectory_logger = trajectory_logger
+
     start_time = time.process_time()
-    (_, _) = policy.rollout(env, b0, store)
+    (history, final_store) = policy.rollout(env, b0, store)
     end_time = time.process_time()
 
     total_time = end_time - start_time
     print(f"Total execution time: {total_time:.2f} seconds")
+
+    if trajectory_logger is not None:
+        final_reward = sum(history.rewards)
+        success = final_reward > 0
+        trajectory_file = trajectory_logger.save(success=success, total_reward=final_reward)
+        summary = trajectory_logger.get_summary()
+        print(f"\n[DataCollection] Summary:")
+        print(f"  - Timesteps: {summary['total_timesteps']}")
+        print(f"  - Total Reward: {summary['total_reward']:.2f}")
+        print(f"  - Actions: {summary['action_distribution']}")
+        print(f"  - Saved to: {trajectory_file}")
